@@ -9,10 +9,6 @@ NAMESPACE=kabanero
 #HOST_SIGNATURE_STORAGE_DIR="/var/tmp"
 #HOST_SIGNATURE_STORAGE_DIR="/mnt/signtask"
 
-# set an ID of secret key for signing. The same ID, which used for generating
-# the keypair, should set.
-SIGNER_NAME="security@example.com"
-
 SIGNATURE_STORAGE_ROOT="/mnt/signtask"
 SIGNATURE_STORAGE_DIR=$SIGNATURE_STORAGE_ROOT/sigstore
 SOURCE_TRANSPORT="docker://"
@@ -66,16 +62,12 @@ spec:
         type: image
       - name: signed-image
         type: image
-    params:
-      - name: sign-by
-        description: Name of the signing key.
-        default: $SIGNER_NAME
   steps:
     - name: sign-image
       securityContext: {}
       image: $REGISTRY_HOST/kabanero/signer
       command: ['/bin/bash']
-      args: ['-c', 'gpg --import /etc/gpg/secret.asc ; skopeo --debug copy --dest-tls-verify=false --src-tls-verify=false --remove-signatures --sign-by \$(inputs.params.sign-by) $SOURCE_TRANSPORT\$(inputs.resources.source-image.url) $SIGNED_TRANSPORT\$(inputs.resources.signed-image.url)']
+      args: ['-c', 'gpg --import /etc/gpg/secret.asc ; SIGNBY=\`gpg --list-keys|sed -n -e "/.*<.*>.*/p"|sed -e "s/^.*<\(.*\)>.*$/\1/"\` ; skopeo --debug copy --dest-tls-verify=false --src-tls-verify=false --remove-signatures --sign-by \$SIGNBY $SOURCE_TRANSPORT\$(inputs.resources.source-image.url) $SIGNED_TRANSPORT\$(inputs.resources.signed-image.url)']
       volumeMounts:
         - name: sign-secret-key
           mountPath: /etc/gpg
@@ -119,8 +111,5 @@ spec:
           resource: source-image
         - name: signed-image
           resource: signed-image
-      params:
-      - name: sign-by
-        value: $SIGNER_NAME
 EOF
 fi
