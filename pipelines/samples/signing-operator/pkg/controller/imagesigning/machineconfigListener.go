@@ -16,11 +16,20 @@ var (
 	mode           = 420
 )
 
+// if keydata is set, add an entry.
+// if keydata is null, remove an entry which is specified by repo from machine config.
 func handleMachineConfig(r *ReconcileImageSigning, keydata *string, repo *string, reqLogger logr.Logger) error {
-	// getCurrent File Config of policy.json.
-	mc, err := findRMC(r, reqLogger)
+	// find current MachineConfig, if it does not exist, try to get one from rendered MachineConfig
+	mc, err := findMC(r, &mcname, reqLogger)
 	if err != nil {
 		return err
+	}
+	if mc == nil {
+		// getCurrent File Config of policy.json.
+		mc, err = findRMC(r, reqLogger)
+		if err != nil {
+			return err
+		}
 	}
 	orgfc := getFileConfig(mc, policyfilename)
 	reqLogger.Info("Toshi: orgfc : " + orgfc.Contents.Source)

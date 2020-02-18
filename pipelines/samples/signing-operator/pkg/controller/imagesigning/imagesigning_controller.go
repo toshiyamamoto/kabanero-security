@@ -130,10 +130,6 @@ func (r *ReconcileImageSigning) Reconcile(request reconcile.Request) (reconcile.
 		reqLogger.Error(err, "Failed to get ImageSigning resource.")
 		return reconcile.Result{}, err
 	}
-	if cr == nil {
-		reqLogger.Info("ImageSigning CR is not found. Do nothing.")
-		return reconcile.Result{}, nil
-	}
 
 	// Find existing imagesigning secret
 	secret, err := findSecret(r, request.Namespace)
@@ -142,7 +138,20 @@ func (r *ReconcileImageSigning) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 	if secret != nil {
-		reqLogger.Info("found ImageSigning secret. Do nothing")
+		// TODO: need to check whether it's owned by me.
+		if cr == nil {
+			reqLogger.Info("ImageSigning CR is not found.")
+			// clean up machine config.
+			currentRepo := getRegistryName(secret)
+			reqLogger.Info("Registry name : " + currentRepo)
+			err = handleMachineConfig(r, nil, &currentRepo, reqLogger)
+		} else {
+			reqLogger.Info("found ImageSigning secret. Do nothing.")
+		}
+		return reconcile.Result{}, err
+	}
+	if cr == nil {
+		reqLogger.Info("No ImageSigning CR. Do nothing.")
 		return reconcile.Result{}, nil
 	}
 

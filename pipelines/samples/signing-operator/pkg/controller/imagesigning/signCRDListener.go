@@ -52,18 +52,18 @@ func findCR(r *ReconcileImageSigning, ns string) (*securityv1alpha1.ImageSigning
 	if err != nil {
 		return nil, err
 	}
-	if len(cr.Items) == 1 {
+	if items := len(cr.Items); items == 0 {
+		return nil, nil
+	} else if items == 1 {
 		return &cr.Items[0], nil
-	} else {
-		for _, _cr := range cr.Items {
-			if _cr.Status.Generated {
-				return &_cr, nil
-			}
-		}
-		err := errors.New("more than one ImageSigning custom resources found")
-		return nil, err
 	}
-	return nil, nil
+	// if there are multiple, return the one of which status shows generated.
+	for _, _cr := range cr.Items {
+		if _cr.Status.Generated {
+			return &_cr, nil
+		}
+	}
+	return nil, errors.New("more than one ImageSigning CRs found")
 }
 
 //TODO: not used. delete later.
@@ -205,4 +205,8 @@ func createSecret(namespace *string, registry *string, armoredPrivateKey *string
 		},
 		Data: m,
 	}, nil
+}
+
+func getRegistryName(secret *corev1.Secret) string {
+	return string(secret.Data[registryName])
 }
