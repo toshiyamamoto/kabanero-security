@@ -1,11 +1,12 @@
-kind: RoleBinding
+kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: signing-operator
 subjects:
 - kind: ServiceAccount
   name: signing-operator
+  namespace: kabanero <<NEED TO BE MODIFIED>>
 roleRef:
-  kind: Role
+  kind: ClusterRole
   name: signing-operator
   apiGroup: rbac.authorization.k8s.io

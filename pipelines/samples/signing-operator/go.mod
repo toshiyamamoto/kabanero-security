@@ -2,15 +2,21 @@ module github.com/kabanero-io/kabanero-security/signing-operator
 
 require (
 	github.com/ajeddeloh/go-json v0.0.0-20170920214419-6a2fe990e083 // indirect
-	github.com/coreos/ignition v0.33.0 // indirect
+	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e // indirect
+	github.com/coreos/ignition v0.33.0
 	github.com/go-logr/logr v0.1.0
 	github.com/go-openapi/spec v0.19.3
 	github.com/openshift/api v0.0.0-20200210091934-a0e53e94816b // indirect
 	github.com/openshift/machine-config-operator v4.2.0-alpha.0+incompatible
 	github.com/operator-framework/operator-sdk v0.11.0
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/prometheus/client_golang v1.1.0 // indirect
+	github.com/prometheus/procfs v0.0.5 // indirect
 	github.com/spf13/pflag v1.0.5
 	github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50 // indirect
+	go.opencensus.io v0.22.0 // indirect
 	golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550
+	golang.org/x/sys v0.0.0-20191115151921-52ab43148777 // indirect
 	k8s.io/api v0.17.1
 	k8s.io/apimachinery v0.17.1
 	k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible

@@ -10,7 +10,10 @@ import (
 // ImageSigningSpec defines the desired state of ImageSigning
 // +k8s:openapi-gen=true
 type ImageSigningSpec struct {
-	// either Identity or Keypair needs to be set.
+	// Registry is for specifying the resistry name with namespace which signature verification is enforced.
+	// for example image-registry.openshift-image-registry.svc:5000/kabanero
+	Registry string `json:"registry"`
+	// Either Identity or Keypair needs to be set.
 	// When Identity is set, a keypair will be generated based on the attributes of Identity.
 	// When Keypair is set, the keypair will be imported from Keypair.
 	// Keypair takes precedence when both are set.

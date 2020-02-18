@@ -70,9 +70,16 @@ func schema_pkg_apis_security_v1alpha1_ImageSigningSpec(ref common.ReferenceCall
 				Description: "ImageSigningSpec defines the desired state of ImageSigning",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
+					"registry": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Registry is for specifying the resistry name with namespace which signature verification is enforced. for example image-registry.openshift-image-registry.svc:5000/kabanero",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"identity": {
 						SchemaProps: spec.SchemaProps{
-							Description: "either Identity or Keypair needs to be set. When Identity is set, a keypair will be generated based on the attributes of Identity. When Keypair is set, the keypair will be imported from Keypair. Keypair takes precedence when both are set.",
+							Description: "Either Identity or Keypair needs to be set. When Identity is set, a keypair will be generated based on the attributes of Identity. When Keypair is set, the keypair will be imported from Keypair. Keypair takes precedence when both are set.",
 							Ref:         ref("./pkg/apis/security/v1alpha1.SignatureIdentity"),
 						},
 					},
@@ -82,6 +89,7 @@ func schema_pkg_apis_security_v1alpha1_ImageSigningSpec(ref common.ReferenceCall
 						},
 					},
 				},
+				Required: []string{"registry"},
 			},
 		},
 		Dependencies: []string{

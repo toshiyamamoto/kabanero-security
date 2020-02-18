@@ -3,6 +3,7 @@ kind: ImageSigning
 metadata:
   name: default
 spec:
+  registry: image-registry.openshift-image-registry.svc:5000/kabanero-sign
   keypair:
     secretKey: |-
       -----BEGIN PGP PRIVATE KEY BLOCK-----

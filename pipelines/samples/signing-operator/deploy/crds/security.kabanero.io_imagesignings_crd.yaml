@@ -32,7 +32,7 @@ spec:
           description: ImageSigningSpec defines the desired state of ImageSigning
           properties:
             identity:
-              description: either Identity or Keypair needs to be set. When Identity
+              description: Either Identity or Keypair needs to be set. When Identity
                 is set, a keypair will be generated based on the attributes of Identity.
                 When Keypair is set, the keypair will be imported from Keypair. Keypair
                 takes precedence when both are set.
@@ -62,6 +62,12 @@ spec:
               - publicKey
               - secretKey
               type: object
+            registry:
+              description: Registry is for specifying the resistry name with namespace
+                which signature verification is enforced. for example image-registry.openshift-image-registry.svc:5000/kabanero
+              type: string
+          required:
+          - registry
           type: object
         status:
           description: ImageSigningStatus defines the observed state of ImageSigning

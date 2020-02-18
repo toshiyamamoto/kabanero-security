@@ -14,6 +14,7 @@ import (
 	"github.com/kabanero-io/kabanero-security/signing-operator/pkg/apis"
 	"github.com/kabanero-io/kabanero-security/signing-operator/pkg/controller"
 
+	machineconfigv1 "github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	kubemetrics "github.com/operator-framework/operator-sdk/pkg/kube-metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
@@ -104,6 +105,11 @@ func main() {
 	// Setup Scheme for all resources
 	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
 		log.Error(err, "")
+		os.Exit(1)
+	}
+	// Setup Scheme for macnine config resources
+	if err := machineconfigv1.AddToScheme(mgr.GetScheme()); err != nil {
+		log.Error(err, "Failed to register machineconfig CRDs")
 		os.Exit(1)
 	}
 
