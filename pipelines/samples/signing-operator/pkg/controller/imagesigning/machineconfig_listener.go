@@ -2,6 +2,7 @@ package imagesigning
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	igntypes "github.com/coreos/ignition/config/v2_2/types"
@@ -18,43 +19,82 @@ var (
 
 // if keydata is set, add an entry.
 // if keydata is null, remove an entry which is specified by repo from machine config.
-func handleMachineConfig(r *ReconcileImageSigning, keydata *string, repo *string, reqLogger logr.Logger) error {
+func handleMachineConfig(r *ReconcileImageSigning, keydata, repo, deleterepo *string, reqLogger logr.Logger) error {
 	// find current MachineConfig, if it does not exist, try to get one from rendered MachineConfig
-	mc, err := findMC(r, &mcname, reqLogger)
+	mc, err := findCurrentMC(r, reqLogger)
+	if err != nil {
+		return err
+	}
+
+	orgfc := getFileConfig(mc, policyfilename)
+	if orgfc != nil {
+		reqLogger.Info("Toshi: orgfc : " + orgfc.Contents.Source)
+	} else {
+		reqLogger.Info("Toshi: orgfc : none")
+	}
+	var policy *Policy
+	// TODO: if FileConfig is nil, create a default one.
+	if orgfc != nil {
+		policy, err = getPolicy(&orgfc.Contents.Source, reqLogger)
+		if err != nil {
+			reqLogger.Error(err, "")
+			return err
+		}
+	} else {
+		policy = createDefaultPolicy()
+		text, _ := json.Marshal(policy)
+		reqLogger.Info("Toshi: default policy : " + string(text))
+	}
+
+	// dereterepo is set, delete existing entry
+	var deleted bool
+	if deleterepo != nil {
+		deleted = deletePolicy(policy, deleterepo)
+	}
+	// repo := "image-registry.openshift-image-registry.svc:5000/kabanero-signed"
+	////	keydata := "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nxsBNBF5FifMBCADfyraEaLUerLGE6p5gVRvZP26lC6MjzJRtvjEU6iJ02VOHA06R\n1AvImDKFtj3acouLMwwIgoW2wEtfnrTdGbLg61Fxfu6fDNW8fZl3aK3K2/HISoTf\n4zmMlSyP6MgxtbJbLw/yaWx39XMre9Y6bxG5BCkfDgy+DMoEHfjmAIFv+cPzxlB9\niB3WLwtUMn2fMlYIzqwcJuqqIBzka1pCv9Yq+z6UCKNbYcs0z/eObn0Rz3twBa/I\nMbUmTR8lzgHM6NyskG25HJtINwviuxZWp+K+YgvV86+GG6r45pOAUI1rCR9DsqgE\n719SVb45+UT3Wzt+ThLN2xzIRFlZ5KLhU7txABEBAAHNI0ltYWdlU2lnbmluZyA8\nc2VjdXJpdHlAZXhhbXBsZS5jb20+wsBiBBMBCAAWBQJeRYnzCRC3ZDy0xb3Q8AIb\nAwIZAQAApagIAIblomoAa6wUfAmNBqhfAiktXBrEqz4hDCcOVZPni60UyF8wXPWB\niEeQcPUxznhlh8lF0skn/raWu8RYI8QSfHJ1wAqZPqB1cCbK5A6kI+uXLMS6OkIk\nGWfTTAgtFW2W36hRSvjBW1jQox1NQOdXh6n5N0IliQu4Zq1x5Tfg/jRAMzRhUjJf\nLkXhYSIIEkFX42iHKLK4ZY+QnUx9UwwmSoe2AT7ft6Ol16SDt+JlQiEvEPrA1eCt\nNlHKim+GTn84xb4KPcbWM4dr3/cKLFGzBEGICdNrLRKtHfS4A0YH4YaQqrgHYyBQ\nzT6FYfn4YsNhAuJ93JP2OESlR8+ggQmZ6HE=\n=XMXB\n-----END PGP PUBLIC KEY BLOCK-----"
+	//keydata := "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nxsANBF5FifMBCADfyraEaLUerLGE6p5gVRvZP26lC6MjzJRtvjEU6iJ02VOHA06R\n1AvImDKFtj3acouLMwwIgoW2wEtfnrTdGbLg61Fxfu6fDNW8fZl3aK3K2/HISoTf\n4zmMlSyP6MgxtbJbLw/yaWx39XMre9Y6bxG5BCkfDgy+DMoEHfjmAIFv+cPzxlB9\niB3WLwtUMn2fMlYIzqwcJuqqIBzka1pCv9Yq+z6UCKNbYcs0z/eObn0Rz3twBa/I\nMbUmTR8lzgHM6NyskG25HJtINwviuxZWp+K+YgvV86+GG6r45pOAUI1rCR9DsqgE\n719SVb45+UT3Wzt+ThLN2xzIRFlZ5KLhU7txABEBAAHNI0ltYWdlU2lnbmluZyA8\nc2VjdXJpdHlAZXhhbXBsZS5jb20+wsBiBBMBCAAWBQJeRYnzCRC3ZDy0xb3Q8AIb\nAwIZAQAApagIAIblomoAa6wUfAmNBqhfAiktXBrEqz4hDCcOVZPni60UyF8wXPWB\niEeQcPUxznhlh8lF0skn/raWu8RYI8QSfHJ1wAqZPqB1cCbK5A6kI+uXLMS6OkIk\nGWfTTAgtFW2W36hRSvjBW1jQox1NQOdXh6n5N0IliQu4Zq1x5Tfg/jRAMzRhUjJf\nLkXhYSIIEkFX42iHKLK4ZY+QnUx9UwwmSoe2AT7ft6Ol16SDt+JlQiEvEPrA1eCt\nNlHKim+GTn84xb4KPcbWM4dr3/cKLFGzBEGICdNrLRKtHfS4A0YH4YaQqrgHYyBQ\nzT6FYfn4YsNhAuJ93JP2OESlR8+ggQmZ6HE=\n=XMXB\n-----END PGP PUBLIC KEY BLOCK-----"
+	updated, err := addPolicy(policy, repo, keydata)
+	updated = updated || deleted
+	if updated {
+		reqLogger.Info("Toshi: after update : UPDATED")
+		err = setCurrentPolicy(r, mc, orgfc, policy, reqLogger)
+	} else {
+		reqLogger.Info("Toshi: after update : NO UPDATE")
+	}
+
+	return err
+}
+
+func deleteMachineConfig(r *ReconcileImageSigning, repo *string, reqLogger logr.Logger) error {
+	// find current MachineConfig, if it does not exist, try to get one from rendered MachineConfig
+	mc, err := findCurrentMC(r, reqLogger)
 	if err != nil {
 		return err
 	}
 	if mc == nil {
-		// getCurrent File Config of policy.json.
-		mc, err = findRMC(r, reqLogger)
-		if err != nil {
-			return err
-		}
+		// if there is no machine config, do nothing.
+		reqLogger.Info("MachineConfig does not exist, do nothing.")
+		return nil
 	}
-	orgfc := getFileConfig(mc, policyfilename)
-	reqLogger.Info("Toshi: orgfc : " + orgfc.Contents.Source)
 
-	// TODO: if FileConfig is nil, create a default one.
+	orgfc := getFileConfig(mc, policyfilename)
+	if orgfc == nil {
+		reqLogger.Info("policy.json file does not exist, do nothing.")
+		return nil
+	}
 
 	policy, err := getPolicy(&orgfc.Contents.Source, reqLogger)
 	if err != nil {
 		reqLogger.Error(err, "")
 		return err
 	}
-
-	// repo := "image-registry.openshift-image-registry.svc:5000/kabanero-signed"
-
-	////	keydata := "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nxsBNBF5FifMBCADfyraEaLUerLGE6p5gVRvZP26lC6MjzJRtvjEU6iJ02VOHA06R\n1AvImDKFtj3acouLMwwIgoW2wEtfnrTdGbLg61Fxfu6fDNW8fZl3aK3K2/HISoTf\n4zmMlSyP6MgxtbJbLw/yaWx39XMre9Y6bxG5BCkfDgy+DMoEHfjmAIFv+cPzxlB9\niB3WLwtUMn2fMlYIzqwcJuqqIBzka1pCv9Yq+z6UCKNbYcs0z/eObn0Rz3twBa/I\nMbUmTR8lzgHM6NyskG25HJtINwviuxZWp+K+YgvV86+GG6r45pOAUI1rCR9DsqgE\n719SVb45+UT3Wzt+ThLN2xzIRFlZ5KLhU7txABEBAAHNI0ltYWdlU2lnbmluZyA8\nc2VjdXJpdHlAZXhhbXBsZS5jb20+wsBiBBMBCAAWBQJeRYnzCRC3ZDy0xb3Q8AIb\nAwIZAQAApagIAIblomoAa6wUfAmNBqhfAiktXBrEqz4hDCcOVZPni60UyF8wXPWB\niEeQcPUxznhlh8lF0skn/raWu8RYI8QSfHJ1wAqZPqB1cCbK5A6kI+uXLMS6OkIk\nGWfTTAgtFW2W36hRSvjBW1jQox1NQOdXh6n5N0IliQu4Zq1x5Tfg/jRAMzRhUjJf\nLkXhYSIIEkFX42iHKLK4ZY+QnUx9UwwmSoe2AT7ft6Ol16SDt+JlQiEvEPrA1eCt\nNlHKim+GTn84xb4KPcbWM4dr3/cKLFGzBEGICdNrLRKtHfS4A0YH4YaQqrgHYyBQ\nzT6FYfn4YsNhAuJ93JP2OESlR8+ggQmZ6HE=\n=XMXB\n-----END PGP PUBLIC KEY BLOCK-----"
-	//keydata := "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nxsANBF5FifMBCADfyraEaLUerLGE6p5gVRvZP26lC6MjzJRtvjEU6iJ02VOHA06R\n1AvImDKFtj3acouLMwwIgoW2wEtfnrTdGbLg61Fxfu6fDNW8fZl3aK3K2/HISoTf\n4zmMlSyP6MgxtbJbLw/yaWx39XMre9Y6bxG5BCkfDgy+DMoEHfjmAIFv+cPzxlB9\niB3WLwtUMn2fMlYIzqwcJuqqIBzka1pCv9Yq+z6UCKNbYcs0z/eObn0Rz3twBa/I\nMbUmTR8lzgHM6NyskG25HJtINwviuxZWp+K+YgvV86+GG6r45pOAUI1rCR9DsqgE\n719SVb45+UT3Wzt+ThLN2xzIRFlZ5KLhU7txABEBAAHNI0ltYWdlU2lnbmluZyA8\nc2VjdXJpdHlAZXhhbXBsZS5jb20+wsBiBBMBCAAWBQJeRYnzCRC3ZDy0xb3Q8AIb\nAwIZAQAApagIAIblomoAa6wUfAmNBqhfAiktXBrEqz4hDCcOVZPni60UyF8wXPWB\niEeQcPUxznhlh8lF0skn/raWu8RYI8QSfHJ1wAqZPqB1cCbK5A6kI+uXLMS6OkIk\nGWfTTAgtFW2W36hRSvjBW1jQox1NQOdXh6n5N0IliQu4Zq1x5Tfg/jRAMzRhUjJf\nLkXhYSIIEkFX42iHKLK4ZY+QnUx9UwwmSoe2AT7ft6Ol16SDt+JlQiEvEPrA1eCt\nNlHKim+GTn84xb4KPcbWM4dr3/cKLFGzBEGICdNrLRKtHfS4A0YH4YaQqrgHYyBQ\nzT6FYfn4YsNhAuJ93JP2OESlR8+ggQmZ6HE=\n=XMXB\n-----END PGP PUBLIC KEY BLOCK-----"
-	updated, err := updatePolicy(policy, repo, keydata)
-
-	if updated {
+	if deletePolicy(policy, repo) {
 		reqLogger.Info("Toshi: after update : UPDATED")
-		err = setCurrentPolicy(r, mc, &orgfc, policy, reqLogger)
+		err = setCurrentPolicy(r, mc, orgfc, policy, reqLogger)
 	} else {
 		reqLogger.Info("Toshi: after update : NO UPDATE")
 	}
-
 	return err
 }
 
@@ -88,6 +128,18 @@ func setCurrentPolicy(r *ReconcileImageSigning, rmc *machineconfigv1.MachineConf
 	}
 
 	return err
+}
+
+func findCurrentMC(r *ReconcileImageSigning, reqLogger logr.Logger) (*machineconfigv1.MachineConfig, error) {
+	mc, err := findMC(r, &mcname, reqLogger)
+	if err != nil {
+		return nil, err
+	}
+	if mc == nil {
+		// getCurrent File Config of policy.json.
+		mc, err = findRMC(r, reqLogger)
+	}
+	return mc, err
 }
 
 func findRMC(r *ReconcileImageSigning, reqLogger logr.Logger) (*machineconfigv1.MachineConfig, error) {
@@ -139,7 +191,7 @@ func findMC(r *ReconcileImageSigning, name *string, reqLogger logr.Logger) (*mac
 }
 
 // get last FileConfig object which matches the specified by path from a machine config
-func getFileConfig(mc *machineconfigv1.MachineConfig, path string) igntypes.File {
+func getFileConfig(mc *machineconfigv1.MachineConfig, path string) *igntypes.File {
 	flist := mc.Spec.Config.Storage.Files
 	var file igntypes.File
 	// find the last match.
@@ -148,5 +200,5 @@ func getFileConfig(mc *machineconfigv1.MachineConfig, path string) igntypes.File
 			file = _file
 		}
 	}
-	return file
+	return &file
 }

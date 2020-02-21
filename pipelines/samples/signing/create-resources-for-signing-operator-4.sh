@@ -6,7 +6,7 @@ NAMESPACE=kabanero
 # this is used in order to store generated signatures for the images.
 # thus write access by the pod user (non root) needs to be granted.
 # if PersistentVolume is used, this value is not required.
-#HOST_SIGNATURE_STORAGE_DIR="/var/tmp"
+HOST_SIGNATURE_STORAGE_DIR="/var/tmp"
 #HOST_SIGNATURE_STORAGE_DIR="/mnt/signtask"
 
 SIGNATURE_STORAGE_ROOT="/mnt/signtask"
@@ -57,7 +57,7 @@ spec:
       securityContext: {}
       image: $REGISTRY_HOST/kabanero/signer
       command: ['/bin/bash']
-      args: ['-c', 'gpg --import /etc/gpg/secret.asc ; SIGNBY=\`gpg --list-keys|sed -n -e "/.*<.*>.*/p"|sed -e "s/^.*<\(.*\)>.*$/\1/"\` ; skopeo --debug copy --dest-tls-verify=false --src-tls-verify=false --remove-signatures --sign-by \$SIGNBY $SOURCE_TRANSPORT\$(inputs.resources.source-image.url) $SIGNED_TRANSPORT\$(inputs.resources.signed-image.url)']
+      args: ['-c', 'REPO=\`cat /etc/gpg/registry\`; if [[ \$(inputs.resources.signed-image.url) != \$REPO/* ]];then echo "The specified signed image repository does not match the name of the repository in sign-secret-key secret resource. The repository name should start with \$REPO, Specified signed image name is \$(inputs.resources.signed-image.url)"; exit 1; fi; gpg --import /etc/gpg/secret.asc ; SIGNBY=\`gpg --list-keys|sed -n -e "/.*<.*>.*/p"|sed -e "s/^.*<\(.*\)>.*$/\1/"\` ; skopeo --debug copy --dest-tls-verify=false --src-tls-verify=false --remove-signatures --sign-by \$SIGNBY $SOURCE_TRANSPORT\$(inputs.resources.source-image.url) $SIGNED_TRANSPORT\$(inputs.resources.signed-image.url)']
       volumeMounts:
         - name: sign-secret-key
           mountPath: /etc/gpg
@@ -73,10 +73,10 @@ spec:
       configMap:
         name: registry-d-default  
     - name: signature-storage
-      persistentVolumeClaim:
-        claimName: signature-storage
-##      hostPath:
-##        path: $HOST_SIGNATURE_STORAGE_DIR
+##      persistentVolumeClaim:
+##        claimName: signature-storage
+      hostPath:
+        path: $HOST_SIGNATURE_STORAGE_DIR
 EOF
 
 echo "Applying sign-pipeline"

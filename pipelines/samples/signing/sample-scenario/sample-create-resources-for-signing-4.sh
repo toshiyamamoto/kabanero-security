@@ -6,7 +6,7 @@ NAMESPACE=kabanero
 # this is used in order to store generated signatures for the images.
 # thus write access by the pod user (non root) needs to be granted.
 # if PersistentVolume is used, this value is not required.
-#HOST_SIGNATURE_STORAGE_DIR="/var/tmp"
+HOST_SIGNATURE_STORAGE_DIR="/var/tmp"
 #HOST_SIGNATURE_STORAGE_DIR="/mnt/signtask"
 
 SIGNATURE_STORAGE_ROOT="/mnt/signtask"
@@ -14,6 +14,11 @@ SIGNATURE_STORAGE_DIR=$SIGNATURE_STORAGE_ROOT/sigstore
 SOURCE_TRANSPORT="docker://"
 SIGNED_TRANSPORT="docker://"
 
+# get internal docker registry. this might not work for OpenShift v4.
+REGISTRY_HOST=$(oc get image.config.openshift.io/cluster -o yaml|grep internalRegistryHostname|awk '{print $2}')
+echo "Registry host : ${REGISTRY_HOST}"
+
+if [ $REGISTRY_HOST ]; then
 # extract the secret key and store as a k8s secret
 echo "creating secret/signature-secret-key from ~/.gnupg/secring.gpg"
 cat <<EOF | oc -n $NAMESPACE apply -f -
@@ -23,12 +28,9 @@ metadata:
   name: signature-secret-key
 data:
   secret.asc: $(gpg --export-secret-keys $SIGNER_NAME | base64 -w 0)
+  registry: $(echo $REGISTRY_HOST/$NAMESPACE-signed | base64 -w 0)
 EOF
-# get internal docker registry. this might not work for OpenShift v4.
-REGISTRY_HOST=$(oc get image.config.openshift.io/cluster -o yaml|grep internalRegistryHostname|awk '{print $2}')
-echo "Registry host : ${REGISTRY_HOST}"
 
-if [ $REGISTRY_HOST ]; then
 echo "Create default.yaml file which will be mounted in /etc/containers/registries.d"
 cat <<EOF | oc -n $NAMESPACE apply -f -
 apiVersion: v1
@@ -67,7 +69,7 @@ spec:
       securityContext: {}
       image: $REGISTRY_HOST/kabanero/signer
       command: ['/bin/bash']
-      args: ['-c', 'gpg --import /etc/gpg/secret.asc ; SIGNBY=\`gpg --list-keys|sed -n -e "/.*<.*>.*/p"|sed -e "s/^.*<\(.*\)>.*$/\1/"\` ; skopeo --debug copy --dest-tls-verify=false --src-tls-verify=false --remove-signatures --sign-by \$SIGNBY $SOURCE_TRANSPORT\$(inputs.resources.source-image.url) $SIGNED_TRANSPORT\$(inputs.resources.signed-image.url)']
+      args: ['-c', 'REPO=\`cat /etc/gpg/registry\`; if [[ \$(inputs.resources.signed-image.url) != \$REPO/* ]];then echo "The specified signed image repository does not match the name of the repository in sign-secret-key secret resource. The repository name should start with \$REPO, Specified signed image name is \$(inputs.resources.signed-image.url)"; exit 1; fi; gpg --import /etc/gpg/secret.asc ; SIGNBY=\`gpg --list-keys|sed -n -e "/.*<.*>.*/p"|sed -e "s/^.*<\(.*\)>.*$/\1/"\` ; skopeo --debug copy --dest-tls-verify=false --src-tls-verify=false --remove-signatures --sign-by \$SIGNBY $SOURCE_TRANSPORT\$(inputs.resources.source-image.url) $SIGNED_TRANSPORT\$(inputs.resources.signed-image.url)']
       volumeMounts:
         - name: sign-secret-key
           mountPath: /etc/gpg
@@ -83,10 +85,10 @@ spec:
       configMap:
         name: registry-d-default  
     - name: signature-storage
-      persistentVolumeClaim:
-        claimName: signature-storage
-##      hostPath:
-##        path: $HOST_SIGNATURE_STORAGE_DIR
+##      persistentVolumeClaim:
+##        claimName: signature-storage
+      hostPath:
+        path: $HOST_SIGNATURE_STORAGE_DIR
 EOF
 
 echo "Applying sign-pipeline"

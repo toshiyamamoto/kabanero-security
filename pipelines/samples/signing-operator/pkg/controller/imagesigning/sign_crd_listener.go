@@ -5,6 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"golang.org/x/crypto/openpgp"
@@ -14,7 +17,7 @@ import (
 	securityv1alpha1 "github.com/kabanero-io/kabanero-security/signing-operator/pkg/apis/security/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	//	machineconfigv1 "github.com/kabanero-io/kabanero-security/signing-operator/pkg/apis/machineconfiguration.openshift.io/v1"
 )
@@ -38,6 +41,32 @@ func findSecret(r *ReconcileImageSigning, ns string) (*corev1.Secret, error) {
 		}
 	}
 	return nil, nil
+}
+
+func isKeyModified(cr *securityv1alpha1.ImageSigning, reqLogger logr.Logger) bool {
+	if cr == nil {
+		return false
+	}
+	if cr.Status.Generated {
+		if cr.Spec.Identity != nil {
+			// identity is set.
+			id, err := getIdentity(&cr.Status.Keypair.SecretKey)
+			if err != nil {
+				// if there is an error, return true to force to recreate key.
+				return true
+			}
+			reqLogger.Info("TOSHI : KEY current :   Name : " + cr.Spec.Identity.Name + ", Email : " + cr.Spec.Identity.Email + ", Comment : " + cr.Spec.Identity.Comment)
+			reqLogger.Info("TOSHI : KEY generated : Name : " + id.Name + ", Email : " + id.Email + ", Comment : " + id.Comment)
+			reqLogger.Info("TOSHI : KEY comp: Name : " + strconv.FormatBool(id.Name == cr.Spec.Identity.Name) + ", Email : " + strconv.FormatBool(id.Email == cr.Spec.Identity.Email) + ", Comment : " + strconv.FormatBool(id.Comment == cr.Spec.Identity.Comment))
+
+			//return !reflect.DeepEqual(cr.Spec.Identity, &id)
+			return !(*cr.Spec.Identity == *id)
+		} else if cr.Spec.Keypair != nil {
+			// keypair is set.
+			return !reflect.DeepEqual(cr.Spec.Keypair, cr.Status.Keypair)
+		}
+	}
+	return true
 }
 
 // return ImageSigning CR instance
@@ -64,29 +93,6 @@ func findCR(r *ReconcileImageSigning, ns string) (*securityv1alpha1.ImageSigning
 		}
 	}
 	return nil, errors.New("more than one ImageSigning CRs found")
-}
-
-//TODO: not used. delete later.
-// By convention, this takes the form "Full Name (Comment) <email@example.com>"
-func getIdentity(secret *corev1.Secret) (string, error) {
-	if secret == nil {
-		return "", nil
-	}
-	pk := secret.Data[secretKeyName]
-	block, err := armor.Decode(bytes.NewReader(pk))
-	if err != nil {
-		return "", err
-	}
-	entity, err := openpgp.ReadEntity(packet.NewReader(block.Body))
-	if err != nil {
-		return "", err
-	}
-	var id string
-	for i := range entity.Identities {
-		id = i
-		break
-	}
-	return id, nil
 }
 
 //TODO: not used. delete later.
@@ -123,8 +129,7 @@ func generateKeyPair(spec *securityv1alpha1.ImageSigningSpec, status *securityv1
 		// TODO: add validation. make sure that nil check is required.
 		// err := errors.New("secretKey and publicKey should be set for importing keypair.")
 		reqLogger.Info("Importing RSA keypair for image signing.")
-		status.PublicKey = spec.Keypair.PublicKey
-		status.SecretKey = spec.Keypair.SecretKey
+		status.Keypair = spec.Keypair
 		status.ErrorMessage = ""
 		status.Generated = true
 		return nil
@@ -137,16 +142,16 @@ func generateKeyPair(spec *securityv1alpha1.ImageSigningSpec, status *securityv1
 		if err != nil {
 			status.ErrorMessage = err.Error()
 			status.Generated = false
-			status.PublicKey = ""
-			status.SecretKey = ""
+			status.Keypair.PublicKey = ""
+			status.Keypair.SecretKey = ""
 			return err
 		}
 		err = copyToStatus(e, status, reqLogger)
 		if err != nil {
 			status.ErrorMessage = err.Error()
 			status.Generated = false
-			status.PublicKey = ""
-			status.SecretKey = ""
+			status.Keypair.PublicKey = ""
+			status.Keypair.SecretKey = ""
 			return err
 		}
 		status.ErrorMessage = ""
@@ -173,7 +178,8 @@ func copyToStatus(e *openpgp.Entity, status *securityv1alpha1.ImageSigningStatus
 		reqLogger.Error(err, "Failed to serialize RSA secret key for signing.")
 		return err
 	}
-	status.SecretKey = sbuf.String()
+	var keypair securityv1alpha1.SignatureKeypair
+	keypair.SecretKey = sbuf.String()
 
 	pbuf := bytes.NewBuffer(nil)
 	wp, err := armor.Encode(pbuf, openpgp.PublicKeyType, nil)
@@ -187,7 +193,8 @@ func copyToStatus(e *openpgp.Entity, status *securityv1alpha1.ImageSigningStatus
 		reqLogger.Error(err, "Failed to serialize RSA public key for signing.")
 		return err
 	}
-	status.PublicKey = pbuf.String()
+	keypair.PublicKey = pbuf.String()
+	status.Keypair = &keypair
 	return nil
 }
 
@@ -207,6 +214,79 @@ func createSecret(namespace *string, registry *string, armoredPrivateKey *string
 	}, nil
 }
 
-func getRegistryName(secret *corev1.Secret) string {
-	return string(secret.Data[registryName])
+// create a secret named signature-secret-key which contains two elements.
+// secret.asc is a secret key which will be used for signing the images.
+// registry is a registry name for signature.
+func updateSecret(secret *corev1.Secret, registry *string, armoredPrivateKey *string, reqLogger logr.Logger) bool {
+	var updated bool
+	registryData := []byte(*registry)
+	if bytes.Compare(secret.Data[registryName], registryData) != 0 {
+		secret.Data[registryName] = registryData
+		reqLogger.Info("Toshi: update registry")
+		updated = true
+	}
+	keyData := []byte(*armoredPrivateKey)
+	if bytes.Compare(secret.Data[secretKeyName], keyData) != 0 {
+		secret.Data[secretKeyName] = keyData
+		reqLogger.Info("Toshi: update secret key")
+		updated = true
+	}
+	return updated
+}
+
+func isOwned(secret *corev1.Secret, uid types.UID) bool {
+	owner := secret.GetOwnerReferences()
+	if owner != nil {
+		if owner[0].UID == uid {
+			return true
+		}
+	}
+	return false
+}
+func getIdentity(secretKey *string) (*securityv1alpha1.SignatureIdentity, error) {
+	block, err := armor.Decode(bytes.NewReader([]byte(*secretKey)))
+	if err != nil {
+		return nil, err
+	}
+	entity, err := openpgp.ReadEntity(packet.NewReader(block.Body))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(entity.Identities) != 1 {
+		return nil, errors.New("more than one identities")
+	}
+	var id *openpgp.Identity
+	for _, _id := range entity.Identities {
+		id = _id
+		break
+	}
+	return parseIdentity(id), nil
+}
+
+func parseIdentity(user *openpgp.Identity) *securityv1alpha1.SignatureIdentity {
+	return &securityv1alpha1.SignatureIdentity{
+		Name:    user.UserId.Name,
+		Comment: user.UserId.Comment,
+		Email:   user.UserId.Email,
+	}
+}
+
+// By convention, this takes the form "Full Name (Comment) <email@example.com>"
+func parseIdentityOld(name string) *securityv1alpha1.SignatureIdentity {
+	var id securityv1alpha1.SignatureIdentity
+	if strings.Contains(name, "(") {
+		slices := strings.Split(name, "(")
+		id.Name = strings.TrimSpace(slices[0])
+		slices = strings.Split(slices[1], ")")
+		id.Comment = strings.TrimSpace(slices[0])
+		id.Email = strings.TrimSpace(strings.Trim(strings.Trim(strings.TrimSpace(slices[1]), "<"), ">"))
+	} else {
+		id.Comment = ""
+		slices := strings.Split(name, "<")
+		id.Name = strings.TrimSpace(slices[0])
+		slices = strings.Split(slices[1], ">")
+		id.Email = strings.TrimSpace(slices[0])
+	}
+	return &id
 }

@@ -3,6 +3,7 @@ package imagesigning
 import (
 	"context"
 	"reflect"
+	"strconv"
 
 	securityv1alpha1 "github.com/kabanero-io/kabanero-security/signing-operator/pkg/apis/security/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -122,7 +123,7 @@ type ReconcileImageSigning struct {
 func (r *ReconcileImageSigning) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling ImageSigning")
-	var keydata, repo *string
+
 	// get custom resource
 	cr, err := findCR(r, request.Namespace)
 	if err != nil {
@@ -138,28 +139,46 @@ func (r *ReconcileImageSigning) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 	if secret != nil {
-		// TODO: need to check whether it's owned by me.
-		if cr == nil {
-			reqLogger.Info("ImageSigning CR is not found.")
-			// clean up machine config.
-			currentRepo := getRegistryName(secret)
-			reqLogger.Info("Registry name : " + currentRepo)
-			err = handleMachineConfig(r, nil, &currentRepo, reqLogger)
+		if cr != nil && isOwned(secret, cr.GetUID()) {
+			currentRepo := &cr.Status.Registry
+			// TODO: need to check whether it's owned by me.
+			if cr == nil {
+				reqLogger.Info("ImageSigning CR is not found.")
+				// clean up machine config.
+				reqLogger.Info("Registry name : " + *currentRepo)
+				err = deleteMachineConfig(r, currentRepo, reqLogger)
+				return reconcile.Result{}, err
+			}
 		} else {
+			// secret is not owned by me, do nothing.
 			reqLogger.Info("found ImageSigning secret. Do nothing.")
+			return reconcile.Result{}, nil
 		}
-		return reconcile.Result{}, err
 	}
 	if cr == nil {
 		reqLogger.Info("No ImageSigning CR. Do nothing.")
 		return reconcile.Result{}, nil
 	}
-
-	if !cr.Status.Generated {
-		// create Entity from the public key.
-		err = generateKeyPair(&cr.Spec, &cr.Status, reqLogger)
-		if err != nil {
-			return reconcile.Result{}, err
+	// TODO add crd has been updated.
+	// check whether CRD has been updated
+	repoModified := cr.Status.Registry != cr.Spec.Registry
+	keyModified := isKeyModified(cr, reqLogger)
+	updated := repoModified || keyModified || !cr.Status.Generated
+	reqLogger.Info("!!!TOSHI : repo :" + strconv.FormatBool(repoModified) + ", keyModified : " + strconv.FormatBool(keyModified) + ", generated : " + strconv.FormatBool(cr.Status.Generated))
+	if updated {
+		var currentRepo *string
+		if keyModified {
+			// create Entity from the public key.
+			err = generateKeyPair(&cr.Spec, &cr.Status, reqLogger)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+		// update registry name.
+		if repoModified {
+			instance := cr.Status.Registry
+			currentRepo = &instance
+			cr.Status.Registry = cr.Spec.Registry
 		}
 		// update status since a new keypair has generated.
 		err = r.client.Status().Update(context.TODO(), cr)
@@ -167,23 +186,31 @@ func (r *ReconcileImageSigning) Reconcile(request reconcile.Request) (reconcile.
 			reqLogger.Error(err, "Failed to update ImageSigning status.")
 			return reconcile.Result{}, err
 		}
-	}
-	// create secret
-	if cr.Status.Generated {
-		desired, err := createSecret(&cr.ObjectMeta.Namespace, &cr.Spec.Registry, &cr.Status.SecretKey)
-		reqLogger.Info("Create a new secret")
-		controllerutil.SetControllerReference(cr, desired, r.scheme)
-		err = r.client.Create(context.TODO(), desired)
+
+		// create secret
+		if secret == nil {
+			secret, err := createSecret(&cr.ObjectMeta.Namespace, &cr.Spec.Registry, &cr.Status.Keypair.SecretKey)
+			if err != nil {
+				reqLogger.Error(err, "Failed to create a new ImageSigning secret.")
+				return reconcile.Result{}, err
+			}
+			reqLogger.Info("Create a new secret")
+			controllerutil.SetControllerReference(cr, secret, r.scheme)
+			err = r.client.Create(context.TODO(), secret)
+		} else {
+			if updateSecret(secret, &cr.Status.Registry, &cr.Status.Keypair.SecretKey, reqLogger) {
+				reqLogger.Info("Update existing secret")
+				err = r.client.Update(context.TODO(), secret)
+			}
+		}
 		if err != nil {
 			reqLogger.Error(err, "Failed to create or update a new ImageSigning secret.")
 			return reconcile.Result{}, err
 		}
-		keydata = &cr.Status.SecretKey
-		repo = &cr.Spec.Registry
-	}
-	reqLogger.Info("Toshi : repo : " + *repo + ", keydata : " + *keydata)
-	// handle machine config
-	err = handleMachineConfig(r, keydata, repo, reqLogger) // TODO
 
-	return reconcile.Result{}, nil
+		reqLogger.Info("Toshi : repo : " + cr.Spec.Registry + ", keydata : " + cr.Status.Keypair.SecretKey)
+		// handle machine config
+		err = handleMachineConfig(r, &cr.Status.Keypair.SecretKey, &cr.Spec.Registry, currentRepo, reqLogger) // TODO
+	}
+	return reconcile.Result{}, err
 }

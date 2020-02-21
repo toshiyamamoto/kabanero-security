@@ -53,10 +53,9 @@ spec:
                 publicKey:
                   type: string
                 secretKey:
-                  description: when the publicKey and secretKey values are set, instead
-                    of generating a new key pair, these values will be used. in order
-                    to handle multi line data in yaml file, adding |= characters at
-                    the top of the data. which indicate the data is literal and chomping.
+                  description: in order to handle multi line data in yaml file, adding
+                    |= characters at the top of the data. which indicate the data
+                    is literal and chomping.
                   type: string
               required:
               - publicKey
@@ -80,15 +79,26 @@ spec:
                 code after modifying this file Add custom validation using kubebuilder
                 tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
               type: boolean
-            publicKey:
-              type: string
-            secretKey:
+            keypair:
+              description: SignatureKeypair defines the keypairs to be imported.
+              properties:
+                publicKey:
+                  type: string
+                secretKey:
+                  description: in order to handle multi line data in yaml file, adding
+                    |= characters at the top of the data. which indicate the data
+                    is literal and chomping.
+                  type: string
+              required:
+              - publicKey
+              - secretKey
+              type: object
+            registry:
               type: string
           required:
           - errorMessage
           - generated
-          - publicKey
-          - secretKey
+          - registry
           type: object
       type: object
   version: v1alpha1
