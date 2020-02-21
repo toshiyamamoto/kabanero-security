@@ -123,6 +123,7 @@ type ReconcileImageSigning struct {
 func (r *ReconcileImageSigning) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling ImageSigning")
+	var updated bool
 
 	// get custom resource
 	cr, err := findCR(r, request.Namespace)
@@ -154,6 +155,8 @@ func (r *ReconcileImageSigning) Reconcile(request reconcile.Request) (reconcile.
 			reqLogger.Info("found ImageSigning secret. Do nothing.")
 			return reconcile.Result{}, nil
 		}
+	} else {
+		updated = true
 	}
 	if cr == nil {
 		reqLogger.Info("No ImageSigning CR. Do nothing.")
@@ -163,7 +166,7 @@ func (r *ReconcileImageSigning) Reconcile(request reconcile.Request) (reconcile.
 	// check whether CRD has been updated
 	repoModified := cr.Status.Registry != cr.Spec.Registry
 	keyModified := isKeyModified(cr, reqLogger)
-	updated := repoModified || keyModified || !cr.Status.Generated
+	updated = updated || repoModified || keyModified || !cr.Status.Generated
 	reqLogger.Info("!!!TOSHI : repo :" + strconv.FormatBool(repoModified) + ", keyModified : " + strconv.FormatBool(keyModified) + ", generated : " + strconv.FormatBool(cr.Status.Generated))
 	if updated {
 		var currentRepo *string
