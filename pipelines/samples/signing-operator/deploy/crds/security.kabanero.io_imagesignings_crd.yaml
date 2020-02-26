@@ -65,6 +65,12 @@ spec:
               description: Registry is for specifying the resistry name with namespace
                 which signature verification is enforced. for example image-registry.openshift-image-registry.svc:5000/kabanero
               type: string
+            syncmachineconfig:
+              description: SyncMachineConfig is for specifying whether the current
+                image signing policy needs to propagate to each worker nodes. If it
+                is set to true, the currrent policy information is propagated to MachineConfig
+                resource.
+              type: boolean
           required:
           - registry
           type: object

@@ -77,6 +77,13 @@ func schema_pkg_apis_security_v1alpha1_ImageSigningSpec(ref common.ReferenceCall
 							Format:      "",
 						},
 					},
+					"syncmachineconfig": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SyncMachineConfig is for specifying whether the current image signing policy needs to propagate to each worker nodes. If it is set to true, the currrent policy information is propagated to MachineConfig resource.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 					"identity": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Either Identity or Keypair needs to be set. When Identity is set, a keypair will be generated based on the attributes of Identity. When Keypair is set, the keypair will be imported from Keypair. Keypair takes precedence when both are set.",

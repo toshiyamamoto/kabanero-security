@@ -13,6 +13,10 @@ type ImageSigningSpec struct {
 	// Registry is for specifying the resistry name with namespace which signature verification is enforced.
 	// for example image-registry.openshift-image-registry.svc:5000/kabanero
 	Registry string `json:"registry"`
+	// SyncMachineConfig is for specifying whether the current image signing policy needs to
+	// propagate to each worker nodes. If it is set to true, the currrent policy information
+	// is propagated to MachineConfig resource.
+	SyncMachineConfig bool `json:"syncmachineconfig,omitempty"`
 	// Either Identity or Keypair needs to be set.
 	// When Identity is set, a keypair will be generated based on the attributes of Identity.
 	// When Keypair is set, the keypair will be imported from Keypair.
