@@ -182,7 +182,6 @@ func (pmc *PolicyMachineConfig) generateMachineConfig() (*machineconfigv1.Machin
 	if err != nil {
 		return nil, err
 	}
-	logpmc.Info("Toshi: updated policy : " + *data)
 	file := getPolicyFileConfig(pmc.MachineConfig)
 	if file == nil {
 		file = createNewFile()
@@ -321,7 +320,6 @@ func setRegistryMap(mc *machineconfigv1.MachineConfig, registries *RegistryMap) 
 	if err != nil {
 		return err
 	}
-	logpmc.Info("Toshi: updated registrymap : " + string(regdata))
 	data := make(map[string]string)
 	data[registrymaptag] = string(regdata)
 	mc.SetAnnotations(data)

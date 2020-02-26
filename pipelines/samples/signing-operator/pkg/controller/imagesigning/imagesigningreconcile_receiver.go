@@ -93,7 +93,7 @@ func (ris *ReconcileImageSigning) handleMachineConfig(uid types.UID, keydata, re
 		}
 
 		if updated {
-			logisr.Info("Toshi: updated")
+			logisr.Info("MachineConfig is updated")
 			err = ris.setMachineConfig(pmc, existMachineConfig)
 		}
 	}
