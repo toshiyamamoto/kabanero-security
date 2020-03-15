@@ -16,14 +16,11 @@ RUN REPOLIST=ubi-8-baseos,ubi-8-codeready-builder,ubi-8-appstream \
     SKOPEO_SRC_PKG_NAME=v${SKOPEO_VERSION_NAME}.tar.gz \
     SKOPEO_SRC_ROOT_NAME=skopeo-${SKOPEO_VERSION_NAME} \
     INSTALL_PKGS="ostree-libs" \
-    TEMP_BUILD_OTHER_PKGS="btrfs-progs-devel" \
-##    TEMP_BUILD_UBI_PKGS="wget make golang gpgme-devel libassuan-devel device-mapper-devel ostree-devel" && \
     TEMP_BUILD_UBI_PKGS="wget make golang gpgme-devel libassuan-devel device-mapper-devel" && \
     yum -y update-minimal --disablerepo "*" --enablerepo ubi-8* --setopt=tsflags=nodocs \
       --security --sec-severity=Important --sec-severity=Critical && \
     yum repolist && \
     yum -y install --disablerepo "*" --enablerepo ${REPOLIST} --setopt=tsflags=nodocs ${INSTALL_PKGS} ${TEMP_BUILD_UBI_PKGS} && \
-    yum -y install --disablerepo "ubi-*" --setopt=tsflags=nodocs ${TEMP_BUILD_OTHER_PKGS} && \
 
 ### Install your application here -- add all other necessary items to build your image
     GOPATH=$(pwd) && \
